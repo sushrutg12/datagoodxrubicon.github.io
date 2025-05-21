@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Clustered Map</title>
+    <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
+    <script src="https://cdn.amcharts.com/lib/5/map.js"></script>
+    <script src="https://cdn.amcharts.com/lib/5/geodata/worldLow.js"></script>
+    <script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
+    <style>
+        #chartdiv {
+            width: 100%;
+            height: 600px;
+        }
+    </style>
+</head>
+<body>
+    <div id="chartdiv"></div>
+    <script>
+        // Initialize the map
+        am5.ready(function() {
+            // Create root element
+            var root = am5.Root.new("chartdiv");
+
+            // Set themes
+            root.setThemes([am5themes_Animated.new(root)]);
+
+            // Create the map chart
+            var chart = root.container.children.push(
+                am5map.MapChart.new(root, {
+                    panX: "translateX",
+                    panY: "translateY",
+                    projection: am5map.geoMercator()
+                })
+            );
+
+            // Create polygon series for world map
+            var polygonSeries = chart.series.push(
+                am5map.MapPolygonSeries.new(root, {
+                    geoJSON: am5geodata_worldLow,
+                    exclude: ["AQ"]
+                })
+            );
+
+            // Create point series for clustered data
+            var pointSeries = chart.series.push(
+                am5map.MapPointSeries.new(root, {})
+            );
+
+            // Configure point series
+            pointSeries.bullets.push(function() {
+                return am5.Bullet.new(root, {
+                    sprite: am5.Circle.new(root, {
+                        radius: 5,
+                        fill: am5.color("#ff0000"),
+                        tooltipText: "{title}"
+                    })
+                });
+            });
+
+            // Function to perform clustering
+            function performClustering(data, maxDistance) {
+                const clusters = [];
+                
+                data.forEach(point => {
+                    let assigned = false;
+                    
+                    for (let cluster of clusters) {
+                        const center = cluster.center;
+                        const distance = calculateDistance(
+                            center.latitude,
+                            center.longitude,
+                            point.latitude,
+                            point.longitude
+                        );
+                        
+                        if (distance <= maxDistance) {
+                            cluster.points.push(point);
+                            assigned = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!assigned) {
+                        clusters.push({
+                            center: { latitude: point.latitude, longitude: point.longitude },
+                            points: [point]
+                        });
+                    }
+                });
+                
+                return clusters;
+            }
+
+            // Function to calculate distance between two points
+            function calculateDistance(lat1, lon1, lat2, lon2) {
+                const R = 6371; // Earth's radius in km
+                const dLat = (lat2 - lat1) * Math.PI / 180;
+                const dLon = (lon2 - lon1) * Math.PI / 180;
+                const a = 
+                    Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                return R * c;
+            }
+
+            // Example data - replace with your actual data
+            const data = [
+                { latitude: 40.7128, longitude: -74.0060, title: "New York" },
+                { latitude: 34.0522, longitude: -118.2437, title: "Los Angeles" },
+                { latitude: 51.5074, longitude: -0.1278, title: "London" },
+                // Add more data points as needed
+            ];
+
+            // Perform clustering
+            const clusters = performClustering(data, 100); // 100km max distance
+
+            // Add clustered points to the map
+            clusters.forEach(cluster => {
+                pointSeries.data.push({
+                    geometry: {
+                        type: "Point",
+                        coordinates: [cluster.center.longitude, cluster.center.latitude]
+                    },
+                    title: `Cluster (${cluster.points.length} points)`
+                });
+            });
+
+            // Make stuff animate on load
+            chart.appear(1000, 100);
+        });
+    </script>
+</body>
+</html> 
