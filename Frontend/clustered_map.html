@@ -20,6 +20,30 @@
   </style>
 </head>
 <body>
+  <div style="position:absolute;z-index:10;top:24px;left:24px;background:white;padding:18px 22px 14px 22px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);font-family:sans-serif;min-width:220px;">
+    <div style="margin-bottom:10px;font-size:1.1em;font-weight:bold;letter-spacing:0.5px;">Map Layers</div>
+    <label style="display:block;margin-bottom:6px;font-size:1em;cursor:pointer;"><input type="checkbox" id="toggleFlood" checked style="margin-right:6px;">Flood Risk</label>
+    <label style="display:block;margin-bottom:6px;font-size:1em;cursor:pointer;"><input type="checkbox" id="toggleFire" checked style="margin-right:6px;">Fire Risk</label>
+    <label style="display:block;margin-bottom:10px;font-size:1em;cursor:pointer;"><input type="checkbox" id="toggleDeployments" checked style="margin-right:6px;">Deployments</label>
+    <div style="border-top:1px solid #eee;margin:10px 0 8px 0;"></div>
+    <div id="legend">
+      <div style="font-weight:bold;margin-bottom:4px;">Flood Risk</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="background:#e0f7fa;width:18px;height:18px;display:inline-block;border-radius:50%;border:1px solid #b2ebf2;"></span> <span style="font-size:0.97em;">Very Low</span>
+        <span style="background:#80deea;width:18px;height:18px;display:inline-block;border-radius:50%;border:1px solid #4dd0e1;"></span> <span style="font-size:0.97em;">Low</span>
+        <span style="background:#26c6da;width:18px;height:18px;display:inline-block;border-radius:50%;border:1px solid #00bcd4;"></span> <span style="font-size:0.97em;">Moderate</span>
+        <span style="background:#00838f;width:18px;height:18px;display:inline-block;border-radius:50%;border:1px solid #006064;"></span> <span style="font-size:0.97em;">High</span>
+        <span style="background:#01579b;width:18px;height:18px;display:inline-block;border-radius:50%;border:1px solid #002f6c;"></span> <span style="font-size:0.97em;">Very High</span>
+      </div>
+      <div style="font-weight:bold;margin:8px 0 4px 0;">Fire Risk</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="background:#ffe082;width:18px;height:18px;display:inline-block;border-radius:50%;border:1px solid #ffd54f;"></span> <span style="font-size:0.97em;">Low</span>
+        <span style="background:#ffb300;width:18px;height:18px;display:inline-block;border-radius:50%;border:1px solid #ffa000;"></span> <span style="font-size:0.97em;">Moderate</span>
+        <span style="background:#f57c00;width:18px;height:18px;display:inline-block;border-radius:50%;border:1px solid #e65100;"></span> <span style="font-size:0.97em;">High</span>
+        <span style="background:#d84315;width:18px;height:18px;display:inline-block;border-radius:50%;border:1px solid #bf360c;"></span> <span style="font-size:0.97em;">Very High</span>
+      </div>
+    </div>
+  </div>
   <div id="chartdiv"></div>
 
   <script>
@@ -54,6 +78,160 @@
       fill: am5.color(0xdadada),
       stroke: am5.color(0x999999)
     });
+
+    // ===============================
+    // Load and render county outlines
+    // ===============================
+    fetch("../Data/county-level-geo.json")
+      .then(res => res.json())
+      .then(geo => {
+        // Only keep counties in Gulf States
+        const gulfFIPS = ["01", "12", "22", "28", "48"]; // AL, FL, LA, MS, TX
+        geo.features = geo.features.filter(f =>
+          gulfFIPS.includes(String(f.properties.STATE || f.properties.STATEFP).padStart(2, "0"))
+        );
+
+        console.log("County features loaded:", geo.features.length);
+
+        // County outline series (for lines only)
+        const countyOutlineSeries = am5map.MapPolygonSeries.new(root, {
+          geoJSON: geo
+        });
+        countyOutlineSeries.mapPolygons.template.setAll({
+          fillOpacity: 0,
+          stroke: am5.color(0x000000),
+          strokeWidth: 1,
+          interactive: false,
+          cursorOverStyle: "default",
+          visible: true
+        });
+        countyOutlineSeries.mapPolygons.template.adapters.add("pointerEvents", () => "none");
+        countyOutlineSeries.mapPolygons.template.set("tooltipText", "{NAME} County");
+        chart.series.insertIndex(1, countyOutlineSeries);
+
+        // ===============================
+        // Load risk data and overlay as clustered points
+        // ===============================
+        fetch("../Data/lat_lon_risk_data.json")
+          .then(res => res.json())
+          .then(riskData => {
+            // Build risk lookup (hardcode TX for now)
+            const riskByCounty = {};
+            riskData.forEach(d => {
+              const key = d.COUNTY.toLowerCase().replace(/[^a-z0-9]/g, '') + '_48';
+              riskByCounty[key] = d;
+            });
+
+            // Helper to get centroid of a polygon
+            function getCentroid(geometry) {
+              let coords = geometry.coordinates[0];
+              let x = 0, y = 0, n = coords.length;
+              coords.forEach(c => { x += c[0]; y += c[1]; });
+              return [x / n, y / n];
+            }
+
+            // Color schemes
+            const floodColors = ["#e0f7fa", "#80deea", "#26c6da", "#00838f", "#01579b"];
+            const fireColors = ["#ffe082", "#ffb300", "#f57c00", "#d84315"];
+
+            // Prepare clustered point data for both risks
+            const floodPoints = [];
+            const firePoints = [];
+            geo.features.forEach(f => {
+              const key = f.properties.NAME.toLowerCase().replace(/[^a-z0-9]/g, '') + '_48';
+              const risk = riskByCounty[key];
+              if (!risk) return;
+              const centroid = getCentroid(f.geometry);
+              // Flood
+              floodPoints.push({
+                geometry: { type: "Point", coordinates: centroid },
+                name: f.properties.NAME + " County",
+                value: risk.CFLD_RISKS,
+                cluster: risk.kmeans_flood_cluster,
+                fill: floodColors[risk.kmeans_flood_cluster] || "#eeeeee",
+                tooltip: `${f.properties.NAME} County\nFlood: ${risk.flood_label}\nValue: ${risk.CFLD_RISKS}`
+              });
+              // Fire
+              firePoints.push({
+                geometry: { type: "Point", coordinates: centroid },
+                name: f.properties.NAME + " County",
+                value: risk.WFIR_RISKS,
+                cluster: risk.kmeans_fire_cluster,
+                fill: fireColors[risk.kmeans_fire_cluster] || "#eeeeee",
+                tooltip: `${f.properties.NAME} County\nFire: ${risk.fire_label}\nValue: ${risk.WFIR_RISKS}`
+              });
+            });
+
+            // Clustered point series for flood
+            var floodClusterSeries = chart.series.push(
+              am5map.ClusteredPointSeries.new(root, {
+                groupIdField: "cluster"
+              })
+            );
+            floodClusterSeries.bullets.push(function (root, dataItem) {
+              const d = dataItem.dataContext;
+              if (!d || typeof d.value !== 'number' || isNaN(d.value)) return undefined;
+              return am5.Bullet.new(root, {
+                sprite: am5.Circle.new(root, {
+                  radius: Math.max(6, Math.sqrt(d.value)),
+                  fill: am5.color(d.fill),
+                  fillOpacity: 0.7,
+                  tooltipText: d.tooltip
+                })
+              });
+            });
+            floodClusterSeries.set("clusteredBullet", function (root) {
+              return am5.Bullet.new(root, {
+                sprite: am5.Circle.new(root, {
+                  radius: 12,
+                  fill: am5.color(0x888888),
+                  fillOpacity: 0.4
+                })
+              });
+            });
+            floodClusterSeries.data.setAll(floodPoints);
+
+            // Clustered point series for fire
+            var fireClusterSeries = chart.series.push(
+              am5map.ClusteredPointSeries.new(root, {
+                groupIdField: "cluster"
+              })
+            );
+            fireClusterSeries.bullets.push(function (root, dataItem) {
+              const d = dataItem.dataContext;
+              if (!d || typeof d.value !== 'number' || isNaN(d.value)) return undefined;
+              return am5.Bullet.new(root, {
+                sprite: am5.Circle.new(root, {
+                  radius: Math.max(6, Math.sqrt(d.value)),
+                  fill: am5.color(d.fill),
+                  fillOpacity: 0.7,
+                  tooltipText: d.tooltip
+                })
+              });
+            });
+            fireClusterSeries.set("clusteredBullet", function (root) {
+              return am5.Bullet.new(root, {
+                sprite: am5.Circle.new(root, {
+                  radius: 12,
+                  fill: am5.color(0x888888),
+                  fillOpacity: 0.4
+                })
+              });
+            });
+            fireClusterSeries.data.setAll(firePoints);
+            fireClusterSeries.set("visible", false);
+
+            // Toggle logic
+            document.getElementById('toggleFlood').addEventListener('change', function(e) {
+              floodClusterSeries.set("visible", e.target.checked);
+              if (e.target.checked) fireClusterSeries.set("visible", false);
+            });
+            document.getElementById('toggleFire').addEventListener('change', function(e) {
+              fireClusterSeries.set("visible", e.target.checked);
+              if (e.target.checked) floodClusterSeries.set("visible", false);
+            });
+          });
+      });
 
     // Create point series for clustered markers
     var pointSeries = chart.series.push(
@@ -141,6 +319,10 @@
 
     // Animate on load
     chart.appear(1000, 100);
+
+    document.getElementById('toggleDeployments').addEventListener('change', function(e) {
+      if (pointSeries) pointSeries.set("visible", e.target.checked);
+    });
   </script>
 </body>
 </html>
