@@ -1,136 +1,146 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Clustered Map</title>
-    <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
-    <script src="https://cdn.amcharts.com/lib/5/map.js"></script>
-    <script src="https://cdn.amcharts.com/lib/5/geodata/worldLow.js"></script>
-    <script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
-    <style>
-        #chartdiv {
-            width: 100%;
-            height: 600px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Clustered Map – Gulf States Only</title>
+  <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
+  <script src="https://cdn.amcharts.com/lib/5/map.js"></script>
+  <script src="https://cdn.amcharts.com/lib/5/geodata/usaLow.js"></script>
+  <script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+    #chartdiv {
+      width: 100%;
+      height: 100vh;
+    }
+  </style>
 </head>
 <body>
-    <div id="chartdiv"></div>
-    <script>
-        // Initialize the map
-        am5.ready(function() {
-            // Create root element
-            var root = am5.Root.new("chartdiv");
+  <div id="chartdiv"></div>
 
-            // Set themes
-            root.setThemes([am5themes_Animated.new(root)]);
+  <script>
+    // Create root element
+    var root = am5.Root.new("chartdiv");
 
-            // Create the map chart
-            var chart = root.container.children.push(
-                am5map.MapChart.new(root, {
-                    panX: "translateX",
-                    panY: "translateY",
-                    projection: am5map.geoMercator()
-                })
-            );
+    // Set themes
+    root.setThemes([am5themes_Animated.new(root)]);
 
-            // Create polygon series for world map
-            var polygonSeries = chart.series.push(
-                am5map.MapPolygonSeries.new(root, {
-                    geoJSON: am5geodata_worldLow,
-                    exclude: ["AQ"]
-                })
-            );
+    // Create the map chart
+    var chart = root.container.children.push(
+      am5map.MapChart.new(root, {
+        panX: "translateX",
+        panY: "translateY",
+        projection: am5map.geoAlbersUsa()
+      })
+    );
 
-            // Create point series for clustered data
-            var pointSeries = chart.series.push(
-                am5map.MapPointSeries.new(root, {})
-            );
+    chart.set("zoomControl", am5map.ZoomControl.new(root, {}));
 
-            // Configure point series
-            pointSeries.bullets.push(function() {
-                return am5.Bullet.new(root, {
-                    sprite: am5.Circle.new(root, {
-                        radius: 5,
-                        fill: am5.color("#ff0000"),
-                        tooltipText: "{title}"
-                    })
-                });
+    // Create main polygon series for USA map
+    var polygonSeries = chart.series.push(
+      am5map.MapPolygonSeries.new(root, {
+        geoJSON: am5geodata_usaLow,
+        include: [
+          "US-TX", "US-LA", "US-MS", "US-AL", "US-FL"
+        ]
+      })
+    );
+
+    polygonSeries.mapPolygons.template.setAll({
+      fill: am5.color(0xdadada),
+      stroke: am5.color(0x999999)
+    });
+
+    // Create point series for clustered markers
+    var pointSeries = chart.series.push(
+      am5map.ClusteredPointSeries.new(root, {
+        groupIdField: "state"
+      })
+    );
+
+    // Clustered bullet visuals
+    pointSeries.set("clusteredBullet", function (root) {
+      var container = am5.Container.new(root, {
+        cursorOverStyle: "pointer"
+      });
+
+      container.children.push(am5.Circle.new(root, {
+        radius: 8,
+        tooltipY: 0,
+        fill: am5.color(0xff8c00)
+      }));
+
+      container.children.push(am5.Circle.new(root, {
+        radius: 12,
+        fillOpacity: 0.3,
+        tooltipY: 0,
+        fill: am5.color(0xff8c00)
+      }));
+
+      container.children.push(am5.Circle.new(root, {
+        radius: 16,
+        fillOpacity: 0.3,
+        tooltipY: 0,
+        fill: am5.color(0xff8c00)
+      }));
+
+      container.children.push(am5.Label.new(root, {
+        centerX: am5.p50,
+        centerY: am5.p50,
+        fill: am5.color(0xffffff),
+        populateText: true,
+        fontSize: "8",
+        text: "{value}"
+      }));
+
+      container.events.on("click", function (e) {
+        pointSeries.zoomToCluster(e.target.dataItem);
+      });
+
+      return am5.Bullet.new(root, {
+        sprite: container
+      });
+    });
+
+    // Regular individual bullets
+    pointSeries.bullets.push(function () {
+      return am5.Bullet.new(root, {
+        sprite: am5.Circle.new(root, {
+          radius: 6,
+          tooltipY: 0,
+          fill: am5.color(0xff8c00),
+          tooltipText: "{title} ({state})"
+        })
+      });
+    });
+
+    // ========================================
+    // DATA: TEAM RUBICON DEPLOYMENTS
+    // ========================================
+    fetch("../Data/map_points.json")
+      .then(res => res.json())
+      .then(jsonData => {
+        const gulfStates = new Set(["US-TX", "US-LA", "US-MS", "US-AL", "US-FL"]);
+        jsonData.forEach(d => {
+          const deployments = Number(d["# of Deployments"]);
+          if (gulfStates.has("US-" + d.state_id) && deployments > 0) {
+            pointSeries.data.push({
+              geometry: { type: "Point", coordinates: [d.lng, d.lat] },
+              title: `${d.city}, ${d.state_id} — ${deployments} deployments`,
+              city: d.city,
+              state: d.state_id,
+              value: deployments
             });
-
-            // Function to perform clustering
-            function performClustering(data, maxDistance) {
-                const clusters = [];
-                
-                data.forEach(point => {
-                    let assigned = false;
-                    
-                    for (let cluster of clusters) {
-                        const center = cluster.center;
-                        const distance = calculateDistance(
-                            center.latitude,
-                            center.longitude,
-                            point.latitude,
-                            point.longitude
-                        );
-                        
-                        if (distance <= maxDistance) {
-                            cluster.points.push(point);
-                            assigned = true;
-                            break;
-                        }
-                    }
-                    
-                    if (!assigned) {
-                        clusters.push({
-                            center: { latitude: point.latitude, longitude: point.longitude },
-                            points: [point]
-                        });
-                    }
-                });
-                
-                return clusters;
-            }
-
-            // Function to calculate distance between two points
-            function calculateDistance(lat1, lon1, lat2, lon2) {
-                const R = 6371; // Earth's radius in km
-                const dLat = (lat2 - lat1) * Math.PI / 180;
-                const dLon = (lon2 - lon1) * Math.PI / 180;
-                const a = 
-                    Math.sin(dLat/2) * Math.sin(dLat/2) +
-                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-                    Math.sin(dLon/2) * Math.sin(dLon/2);
-                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                return R * c;
-            }
-
-            // Example data - replace with your actual data
-            const data = [
-                { latitude: 40.7128, longitude: -74.0060, title: "New York" },
-                { latitude: 34.0522, longitude: -118.2437, title: "Los Angeles" },
-                { latitude: 51.5074, longitude: -0.1278, title: "London" },
-                // Add more data points as needed
-            ];
-
-            // Perform clustering
-            const clusters = performClustering(data, 100); // 100km max distance
-
-            // Add clustered points to the map
-            clusters.forEach(cluster => {
-                pointSeries.data.push({
-                    geometry: {
-                        type: "Point",
-                        coordinates: [cluster.center.longitude, cluster.center.latitude]
-                    },
-                    title: `Cluster (${cluster.points.length} points)`
-                });
-            });
-
-            // Make stuff animate on load
-            chart.appear(1000, 100);
+          }
         });
-    </script>
+      });
+
+    // Animate on load
+    chart.appear(1000, 100);
+  </script>
 </body>
-</html> 
+</html>
