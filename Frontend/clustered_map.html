@@ -193,18 +193,35 @@
         });
       });
 
-    // Flood risk color scale (adjust as needed)
+    // Flood risk color scale and label mapping
     function getFloodColor(cluster) {
-      // Example: 0=Very Low, 1=Low, 2=Moderate, 3=High, 4=Very High
       const colors = ["#e0f7fa", "#80deea", "#26c6da", "#00838f", "#01579b"];
       return colors[cluster] || "#bdbdbd";
     }
+    function getFloodLabel(cluster) {
+      const labels = [
+        "Very Low Flood Risk (<5)",
+        "Low Flood Risk (<10)",
+        "Moderate Flood Risk (<25)",
+        "High Flood Risk (<50)",
+        "Very High Flood Risk (>50)"
+      ];
+      return labels[cluster] || "Unknown Flood Risk";
+    }
 
-    // Fire risk color scale (adjust as needed)
+    // Fire risk color scale and label mapping
     function getFireColor(cluster) {
-      // Example: 0=Low, 1=Moderate, 2=High, 3=Very High
       const colors = ["#ffe082", "#ffb300", "#f57c00", "#d84315"];
       return colors[cluster] || "#bdbdbd";
+    }
+    function getFireLabel(cluster) {
+      const labels = [
+        "Low Wildfire Risk (<70)",
+        "Moderate Wildfire Risk (<80)",
+        "High Wildfire Risk (<90)",
+        "Very High Wildfire Risk (>90)"
+      ];
+      return labels[cluster] || "Unknown Wildfire Risk";
     }
 
     let floodSeries, fireSeries;
@@ -221,7 +238,7 @@
         riskData.forEach(d => {
           floodSeries.data.push({
             geometry: { type: "Point", coordinates: [d.lng, d.lat] },
-            title: `${d.COUNTY} County\nFlood: ${d.flood_label}`,
+            title: `${d.COUNTY} County\nFlood: ${getFloodLabel(d.kmeans_flood_cluster)}`,
             value: d.kmeans_flood_cluster,
             fill: am5.color(getFloodColor(d.kmeans_flood_cluster))
           });
@@ -244,7 +261,7 @@
         riskData.forEach(d => {
           fireSeries.data.push({
             geometry: { type: "Point", coordinates: [d.lng, d.lat] },
-            title: `${d.COUNTY} County\nFire: ${d.risk_label}`,
+            title: `${d.COUNTY} County\nFire: ${getFireLabel(d.kmeans_fire_cluster)}`,
             value: d.kmeans_fire_cluster,
             fill: am5.color(getFireColor(d.kmeans_fire_cluster))
           });
