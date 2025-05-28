@@ -244,7 +244,7 @@
         riskData.forEach(d => {
           fireSeries.data.push({
             geometry: { type: "Point", coordinates: [d.lng, d.lat] },
-            title: `${d.COUNTY} County\nFire: ${d.fire_label}`,
+            title: `${d.COUNTY} County\nFire: ${d.risk_label}`,
             value: d.kmeans_fire_cluster,
             fill: am5.color(getFireColor(d.kmeans_fire_cluster))
           });
