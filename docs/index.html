@@ -80,7 +80,7 @@
     });
 
     // Add county boundaries using county-level-geo.json
-    fetch("../Data/county-level-geo.json")
+    fetch("../docs/county-level-geo.json")
       .then(res => res.json())
       .then(geo => {
         // Only keep counties in Gulf States (AL, FL, LA, MS, TX)
@@ -175,7 +175,7 @@
     // ========================================
     // DATA: TEAM RUBICON DEPLOYMENTS
     // ========================================
-    fetch("../Data/map_points.json")
+    fetch("../docs/map_points.json")
       .then(res => res.json())
       .then(jsonData => {
         const gulfStates = new Set(["US-TX", "US-LA", "US-MS", "US-AL", "US-FL"]);
@@ -227,7 +227,7 @@
     let floodSeries, fireSeries;
 
     // Load risk data and add to map
-    fetch("../Data/merged_risk_data.json")
+    fetch("../docs/merged_risk_data.json")
       .then(res => res.json())
       .then(riskData => {
         console.log("Loaded risk data:", riskData.length); // Debug
